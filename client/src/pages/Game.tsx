@@ -6,7 +6,9 @@ import { Board, Player, checkWinner, getBestMoveMCTS } from "@/lib/mcts";
 
 export default function Game() {
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
-  const [isHumanTurn, setIsHumanTurn] = useState(true);
+  const [currentPlayer, setCurrentPlayer] = useState<'X' | 'O'>('X');
+  const [playerXType, setPlayerXType] = useState<'human' | 'ai'>('human');
+  const [playerOType, setPlayerOType] = useState<'human' | 'ai'>('ai');
   const [winner, setWinner] = useState<Player | 'Draw' | null>(null);
   const [winningLine, setWinningLine] = useState<number[] | null>(null);
   const [difficulty] = useState<number>(3000); // MCTS iterations
@@ -35,42 +37,49 @@ export default function Game() {
     return null;
   }, []);
 
-  const handleCellClick = (index: number) => {
-    if (board[index] || winner || !isHumanTurn) return;
+  const handleMove = useCallback((index: number, player: 'X' | 'O') => {
+    if (board[index] || winner) return;
 
     const newBoard = [...board];
-    newBoard[index] = 'X';
+    newBoard[index] = player;
     setBoard(newBoard);
     
     const result = checkWinState(newBoard);
     if (!result) {
-      setIsHumanTurn(false);
+      setCurrentPlayer(player === 'X' ? 'O' : 'X');
     }
+  }, [board, winner, checkWinState]);
+
+  const handleCellClick = (index: number) => {
+    const isHumanTurn = (currentPlayer === 'X' && playerXType === 'human') || 
+                        (currentPlayer === 'O' && playerOType === 'human');
+    if (!isHumanTurn) return;
+    handleMove(index, currentPlayer);
   };
 
   useEffect(() => {
-    if (!isHumanTurn && !winner) {
+    if (winner) return;
+
+    const isAITurn = (currentPlayer === 'X' && playerXType === 'ai') || 
+                     (currentPlayer === 'O' && playerOType === 'ai');
+
+    if (isAITurn) {
       const timer = setTimeout(() => {
-        const bestMove = getBestMoveMCTS(board, 'O', difficulty);
-        const newBoard = [...board];
-        newBoard[bestMove] = 'O';
-        setBoard(newBoard);
-        
-        const result = checkWinState(newBoard);
-        if (!result) {
-          setIsHumanTurn(true);
+        const bestMove = getBestMoveMCTS(board, currentPlayer, difficulty);
+        if (bestMove !== -1) {
+          handleMove(bestMove, currentPlayer);
         }
-      }, 500); // Small delay for UX
+      }, 600); // Delay for visualization
 
       return () => clearTimeout(timer);
     }
-  }, [isHumanTurn, winner, board, checkWinState, difficulty]);
+  }, [currentPlayer, playerXType, playerOType, board, winner, difficulty, handleMove]);
 
   const resetGame = () => {
     setBoard(Array(9).fill(null));
     setWinner(null);
     setWinningLine(null);
-    setIsHumanTurn(true);
+    setCurrentPlayer('X');
   };
 
   return (
@@ -78,40 +87,122 @@ export default function Game() {
       <div className="max-w-md w-full glass-panel rounded-3xl p-8 flex flex-col items-center relative overflow-hidden">
         
         {/* Header */}
-        <div className="text-center mb-8 relative z-10">
+        <div className="text-center mb-6 relative z-10">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Sparkles className="w-5 h-5 text-primary" />
             <h1 className="text-2xl font-bold tracking-tight uppercase">Quantum Tic-Tac-Toe</h1>
             <Sparkles className="w-5 h-5 text-accent" />
           </div>
-          <p className="text-muted-foreground text-sm font-mono">
-            Human (X) vs MCTS AI (O)
-          </p>
         </div>
 
-        {/* Turn indicator */}
-        <div className="flex w-full justify-between items-center mb-8 px-4 relative z-10">
-          <div className={`flex flex-col items-center gap-2 transition-opacity duration-300 ${isHumanTurn && !winner ? 'opacity-100' : 'opacity-40'}`}>
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${isHumanTurn && !winner ? 'bg-primary/20 text-primary shadow-[0_0_15px_rgba(var(--color-primary),0.3)]' : 'bg-secondary text-muted-foreground'}`}>
-              <User size={24} />
+        {/* Player Configuration */}
+        <div className="flex w-full justify-between items-center mb-6 relative z-10">
+          {/* Player X */}
+          <div className="flex flex-col items-center gap-3">
+            <div className={`text-sm font-mono font-bold transition-colors ${currentPlayer === 'X' && !winner ? 'text-primary' : 'text-muted-foreground'}`}>
+              PLAYER X
             </div>
-            <span className="text-xs font-mono font-medium tracking-wider">YOU (X)</span>
+            <div className="flex p-1 rounded-xl bg-background/50 border border-white/5">
+              <button 
+                onClick={() => setPlayerXType('human')}
+                data-testid="player-x-human"
+                className={`p-2 rounded-lg transition-all ${playerXType === 'human' ? 'bg-primary/20 text-primary shadow-[0_0_10px_hsl(var(--color-primary)/0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Human"
+              >
+                <User className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setPlayerXType('ai')}
+                data-testid="player-x-ai"
+                className={`p-2 rounded-lg transition-all ${playerXType === 'ai' ? 'bg-primary/20 text-primary shadow-[0_0_10px_hsl(var(--color-primary)/0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
+                title="AI"
+              >
+                <Bot className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-          
-          <div className="text-xl font-bold text-muted-foreground">VS</div>
 
-          <div className={`flex flex-col items-center gap-2 transition-opacity duration-300 ${!isHumanTurn && !winner ? 'opacity-100' : 'opacity-40'}`}>
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 ${!isHumanTurn && !winner ? 'bg-accent/20 text-accent shadow-[0_0_15px_rgba(var(--color-accent),0.3)]' : 'bg-secondary text-muted-foreground'}`}>
-              <Bot size={24} />
+          <div className="text-xl font-black text-white/10 mt-6">VS</div>
+
+          {/* Player O */}
+          <div className="flex flex-col items-center gap-3">
+            <div className={`text-sm font-mono font-bold transition-colors ${currentPlayer === 'O' && !winner ? 'text-accent' : 'text-muted-foreground'}`}>
+              PLAYER O
             </div>
-            <span className="text-xs font-mono font-medium tracking-wider">AI (O)</span>
+            <div className="flex p-1 rounded-xl bg-background/50 border border-white/5">
+              <button 
+                onClick={() => setPlayerOType('human')}
+                data-testid="player-o-human"
+                className={`p-2 rounded-lg transition-all ${playerOType === 'human' ? 'bg-accent/20 text-accent shadow-[0_0_10px_hsl(var(--color-accent)/0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Human"
+              >
+                <User className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setPlayerOType('ai')}
+                data-testid="player-o-ai"
+                className={`p-2 rounded-lg transition-all ${playerOType === 'ai' ? 'bg-accent/20 text-accent shadow-[0_0_10px_hsl(var(--color-accent)/0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
+                title="AI"
+              >
+                <Bot className="w-4 h-4" />
+              </button>
+            </div>
           </div>
+        </div>
+
+        {/* Status Indicator */}
+        <div className="h-12 w-full flex items-center justify-center relative z-10 mb-2">
+          <AnimatePresence mode="wait">
+            {winner ? (
+              <motion.div
+                key="winner"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="text-xl font-bold"
+              >
+                {winner === 'Draw' ? (
+                  <span className="text-muted-foreground">It's a Draw!</span>
+                ) : winner === 'X' ? (
+                  <span className="text-primary drop-shadow-[0_0_8px_hsl(var(--color-primary)/0.5)]">Player X Wins!</span>
+                ) : (
+                  <span className="text-accent drop-shadow-[0_0_8px_hsl(var(--color-accent)/0.5)]">Player O Wins!</span>
+                )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key={`turn-${currentPlayer}`}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                className="flex items-center gap-2 text-sm font-mono"
+              >
+                {currentPlayer === 'X' ? (
+                  <span className="text-primary font-bold">X's Turn</span>
+                ) : (
+                  <span className="text-accent font-bold">O's Turn</span>
+                )}
+                <span className="text-muted-foreground opacity-70">
+                  ({currentPlayer === 'X' ? (playerXType === 'ai' ? 'Thinking...' : 'Human') : (playerOType === 'ai' ? 'Thinking...' : 'Human')})
+                </span>
+                {((currentPlayer === 'X' && playerXType === 'ai') || (currentPlayer === 'O' && playerOType === 'ai')) && (
+                  <span className="relative flex h-2 w-2 ml-1">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentPlayer === 'X' ? 'bg-primary' : 'bg-accent'}`}></span>
+                    <span className={`relative inline-flex rounded-full h-2 w-2 ${currentPlayer === 'X' ? 'bg-primary' : 'bg-accent'}`}></span>
+                  </span>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Game Board */}
-        <div className="relative z-10 mb-8 aspect-square w-full max-w-[320px] grid grid-cols-3 grid-rows-3 gap-3">
+        <div className="relative z-10 aspect-square w-full max-w-[320px] grid grid-cols-3 grid-rows-3 gap-3 mb-6">
           {board.map((cell, idx) => {
             const isWinningCell = winningLine?.includes(idx);
+            const isHumanTurn = (currentPlayer === 'X' && playerXType === 'human') || 
+                                (currentPlayer === 'O' && playerOType === 'human');
+                                
             return (
               <button
                 key={idx}
@@ -119,7 +210,7 @@ export default function Game() {
                 disabled={!!cell || !!winner || !isHumanTurn}
                 data-testid={`cell-${idx}`}
                 className={`game-cell rounded-2xl flex items-center justify-center text-5xl font-bold cursor-pointer relative overflow-hidden
-                  ${isWinningCell ? (cell === 'X' ? 'bg-primary/20 shadow-[0_0_20px_rgba(var(--color-primary),0.3)]' : 'bg-accent/20 shadow-[0_0_20px_rgba(var(--color-accent),0.3)]') : ''}
+                  ${isWinningCell ? (cell === 'X' ? 'bg-primary/20 shadow-[0_0_20px_hsl(var(--color-primary)/0.3)]' : 'bg-accent/20 shadow-[0_0_20px_hsl(var(--color-accent)/0.3)]') : ''}
                 `}
               >
                 <AnimatePresence>
@@ -139,56 +230,17 @@ export default function Game() {
           })}
         </div>
 
-        {/* Game Status / Reset */}
-        <div className="h-16 w-full flex items-center justify-center relative z-10">
-          <AnimatePresence mode="wait">
-            {winner ? (
-              <motion.div
-                key="winner"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex flex-col items-center w-full"
-              >
-                <div className="text-xl font-bold mb-4">
-                  {winner === 'Draw' ? (
-                    <span className="text-muted-foreground">It's a Draw!</span>
-                  ) : winner === 'X' ? (
-                    <span className="text-primary">You Won!</span>
-                  ) : (
-                    <span className="text-accent">AI Won!</span>
-                  )}
-                </div>
-                <Button 
-                  onClick={resetGame} 
-                  className="w-full rounded-xl py-6 text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
-                  data-testid="button-reset"
-                >
-                  <RotateCcw className="mr-2 h-5 w-5" />
-                  Play Again
-                </Button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="playing"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="text-muted-foreground text-sm font-mono flex items-center gap-2"
-              >
-                {!isHumanTurn && (
-                  <>
-                    <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-accent"></span>
-                    </span>
-                    AI is thinking...
-                  </>
-                )}
-                {isHumanTurn && "Your turn"}
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* Persistent Reset Button */}
+        <div className="w-full relative z-10">
+          <Button 
+            onClick={resetGame} 
+            variant="outline"
+            className="w-full rounded-xl py-6 bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 transition-all font-mono font-medium"
+            data-testid="button-reset"
+          >
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Restart Game
+          </Button>
         </div>
         
         {/* Subtle background glow */}

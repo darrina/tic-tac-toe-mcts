@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, User, RotateCcw, Sparkles } from "lucide-react";
+import { Bot, User, RotateCcw, Sparkles, Play, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Board, Player, checkWinner, getBestMoveMCTS } from "@/lib/mcts";
 
@@ -12,6 +12,9 @@ export default function Game() {
   const [winner, setWinner] = useState<Player | 'Draw' | null>(null);
   const [winningLine, setWinningLine] = useState<number[] | null>(null);
   const [difficulty] = useState<number>(3000); // MCTS iterations
+  
+  const [gameState, setGameState] = useState<'paused' | 'started'>('paused');
+  const aiMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const checkWinState = useCallback((currentBoard: Board) => {
     const lines = [
@@ -25,12 +28,14 @@ export default function Game() {
       if (currentBoard[a] && currentBoard[a] === currentBoard[b] && currentBoard[a] === currentBoard[c]) {
         setWinner(currentBoard[a] as Player);
         setWinningLine(lines[i]);
+        setGameState('paused');
         return currentBoard[a] as Player;
       }
     }
     
     if (!currentBoard.includes(null)) {
       setWinner('Draw');
+      setGameState('paused');
       return 'Draw';
     }
     
@@ -51,36 +56,55 @@ export default function Game() {
   }, [board, winner, checkWinState]);
 
   const handleCellClick = (index: number) => {
+    if (gameState === 'paused' || winner) return;
+
     const isHumanTurn = (currentPlayer === 'X' && playerXType === 'human') || 
                         (currentPlayer === 'O' && playerOType === 'human');
     if (!isHumanTurn) return;
+    
     handleMove(index, currentPlayer);
   };
 
   useEffect(() => {
-    if (winner) return;
+    // Clear any existing timeout
+    if (aiMoveTimeoutRef.current) {
+      clearTimeout(aiMoveTimeoutRef.current);
+      aiMoveTimeoutRef.current = null;
+    }
+
+    if (winner || gameState === 'paused') return;
 
     const isAITurn = (currentPlayer === 'X' && playerXType === 'ai') || 
                      (currentPlayer === 'O' && playerOType === 'ai');
 
     if (isAITurn) {
-      const timer = setTimeout(() => {
+      aiMoveTimeoutRef.current = setTimeout(() => {
         const bestMove = getBestMoveMCTS(board, currentPlayer, difficulty);
         if (bestMove !== -1) {
           handleMove(bestMove, currentPlayer);
         }
       }, 600); // Delay for visualization
-
-      return () => clearTimeout(timer);
     }
-  }, [currentPlayer, playerXType, playerOType, board, winner, difficulty, handleMove]);
+
+    return () => {
+      if (aiMoveTimeoutRef.current) {
+        clearTimeout(aiMoveTimeoutRef.current);
+      }
+    };
+  }, [currentPlayer, playerXType, playerOType, board, winner, difficulty, handleMove, gameState]);
 
   const resetGame = () => {
+    if (aiMoveTimeoutRef.current) {
+      clearTimeout(aiMoveTimeoutRef.current);
+    }
     setBoard(Array(9).fill(null));
     setWinner(null);
     setWinningLine(null);
     setCurrentPlayer('X');
+    setGameState('paused');
   };
+
+  const isGameEmpty = board.every(c => c === null);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4">
@@ -102,9 +126,10 @@ export default function Game() {
             <div className={`text-sm font-mono font-bold transition-colors ${currentPlayer === 'X' && !winner ? 'text-primary' : 'text-muted-foreground'}`}>
               PLAYER X
             </div>
-            <div className="flex p-1 rounded-xl bg-background/50 border border-white/5">
+            <div className={`flex p-1 rounded-xl bg-background/50 border transition-all duration-300 ${gameState === 'started' ? 'border-transparent opacity-50 grayscale pointer-events-none' : 'border-white/10'}`}>
               <button 
                 onClick={() => setPlayerXType('human')}
+                disabled={gameState === 'started'}
                 data-testid="player-x-human"
                 className={`p-2 rounded-lg transition-all ${playerXType === 'human' ? 'bg-primary/20 text-primary shadow-[0_0_10px_hsl(var(--color-primary)/0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
                 title="Human"
@@ -113,6 +138,7 @@ export default function Game() {
               </button>
               <button 
                 onClick={() => setPlayerXType('ai')}
+                disabled={gameState === 'started'}
                 data-testid="player-x-ai"
                 className={`p-2 rounded-lg transition-all ${playerXType === 'ai' ? 'bg-primary/20 text-primary shadow-[0_0_10px_hsl(var(--color-primary)/0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
                 title="AI"
@@ -129,9 +155,10 @@ export default function Game() {
             <div className={`text-sm font-mono font-bold transition-colors ${currentPlayer === 'O' && !winner ? 'text-accent' : 'text-muted-foreground'}`}>
               PLAYER O
             </div>
-            <div className="flex p-1 rounded-xl bg-background/50 border border-white/5">
+            <div className={`flex p-1 rounded-xl bg-background/50 border transition-all duration-300 ${gameState === 'started' ? 'border-transparent opacity-50 grayscale pointer-events-none' : 'border-white/10'}`}>
               <button 
                 onClick={() => setPlayerOType('human')}
+                disabled={gameState === 'started'}
                 data-testid="player-o-human"
                 className={`p-2 rounded-lg transition-all ${playerOType === 'human' ? 'bg-accent/20 text-accent shadow-[0_0_10px_hsl(var(--color-accent)/0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
                 title="Human"
@@ -140,6 +167,7 @@ export default function Game() {
               </button>
               <button 
                 onClick={() => setPlayerOType('ai')}
+                disabled={gameState === 'started'}
                 data-testid="player-o-ai"
                 className={`p-2 rounded-lg transition-all ${playerOType === 'ai' ? 'bg-accent/20 text-accent shadow-[0_0_10px_hsl(var(--color-accent)/0.2)]' : 'text-muted-foreground hover:text-foreground'}`}
                 title="AI"
@@ -167,6 +195,20 @@ export default function Game() {
                   <span className="text-primary drop-shadow-[0_0_8px_hsl(var(--color-primary)/0.5)]">Player X Wins!</span>
                 ) : (
                   <span className="text-accent drop-shadow-[0_0_8px_hsl(var(--color-accent)/0.5)]">Player O Wins!</span>
+                )}
+              </motion.div>
+            ) : gameState === 'paused' ? (
+              <motion.div
+                key="paused-status"
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                className="text-amber-500/80 font-mono font-medium flex items-center gap-2"
+              >
+                {isGameEmpty ? (
+                  <>Configure Players & Press Start</>
+                ) : (
+                  <><Pause className="w-4 h-4" /> Game Paused</>
                 )}
               </motion.div>
             ) : (
@@ -197,20 +239,22 @@ export default function Game() {
         </div>
 
         {/* Game Board */}
-        <div className="relative z-10 aspect-square w-full max-w-[320px] grid grid-cols-3 grid-rows-3 gap-3 mb-6">
+        <div className="relative z-10 aspect-square w-full max-w-[320px] grid grid-cols-3 grid-rows-3 gap-3 mb-8">
           {board.map((cell, idx) => {
             const isWinningCell = winningLine?.includes(idx);
             const isHumanTurn = (currentPlayer === 'X' && playerXType === 'human') || 
                                 (currentPlayer === 'O' && playerOType === 'human');
+            const isDisabled = gameState === 'paused' || !!cell || !!winner || !isHumanTurn;
                                 
             return (
               <button
                 key={idx}
                 onClick={() => handleCellClick(idx)}
-                disabled={!!cell || !!winner || !isHumanTurn}
+                disabled={isDisabled}
                 data-testid={`cell-${idx}`}
-                className={`game-cell rounded-2xl flex items-center justify-center text-5xl font-bold cursor-pointer relative overflow-hidden
+                className={`game-cell rounded-2xl flex items-center justify-center text-5xl font-bold relative overflow-hidden
                   ${isWinningCell ? (cell === 'X' ? 'bg-primary/20 shadow-[0_0_20px_hsl(var(--color-primary)/0.3)]' : 'bg-accent/20 shadow-[0_0_20px_hsl(var(--color-accent)/0.3)]') : ''}
+                  ${isDisabled ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:-translate-y-1'}
                 `}
               >
                 <AnimatePresence>
@@ -230,17 +274,44 @@ export default function Game() {
           })}
         </div>
 
-        {/* Persistent Reset Button */}
-        <div className="w-full relative z-10">
+        {/* Controls */}
+        <div className="w-full relative z-10 flex flex-col gap-3">
           <Button 
-            onClick={resetGame} 
-            variant="outline"
-            className="w-full rounded-xl py-6 bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 transition-all font-mono font-medium"
-            data-testid="button-reset"
+            onClick={() => setGameState(gameState === 'started' ? 'paused' : 'started')} 
+            className={`w-full rounded-xl py-6 font-mono font-medium text-lg transition-all ${
+              gameState === 'started' 
+                ? 'bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/30' 
+                : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_0_15px_hsl(var(--color-primary)/0.3)]'
+            }`}
+            data-testid="button-toggle-state"
           >
-            <RotateCcw className="mr-2 h-4 w-4" />
-            Restart Game
+            {gameState === 'started' ? (
+              <><Pause className="mr-2 h-5 w-5" /> Pause Game</>
+            ) : (
+              <><Play className="mr-2 h-5 w-5" /> {isGameEmpty ? 'Start Game' : 'Resume Game'}</>
+            )}
           </Button>
+
+          <AnimatePresence>
+            {gameState === 'paused' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, scale: 0.9 }}
+                animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                exit={{ opacity: 0, height: 0, scale: 0.9 }}
+                className="overflow-hidden"
+              >
+                <Button 
+                  onClick={resetGame} 
+                  variant="outline"
+                  className="w-full rounded-xl py-6 bg-white/5 border-white/10 hover:bg-destructive/20 hover:text-destructive hover:border-destructive/50 transition-all font-mono font-medium mt-2"
+                  data-testid="button-reset"
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Reset Game
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
         
         {/* Subtle background glow */}

@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-lint-test:
+    name: Build, Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (TypeScript type check)
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 1
+
+  release:
+    name: Release
+    needs: build-lint-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+
+      - name: Package artifact
+        run: tar -czf dist.tar.gz dist/
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes semantic-release

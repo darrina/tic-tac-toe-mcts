@@ -1,19 +1,31 @@
 export type Player = 'X' | 'O' | null;
 export type Board = Player[];
 
+const WIN_LINES = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6]
+] as const;
+
+/** Returns the winning player, 'Draw', or null if the game is still in progress. */
 export function checkWinner(board: Board): Player | 'Draw' | null {
-  const lines = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8],
-    [0, 3, 6], [1, 4, 7], [2, 5, 8],
-    [0, 4, 8], [2, 4, 6]
-  ];
-  for (let i = 0; i < lines.length; i++) {
-    const [a, b, c] = lines[i];
+  for (const [a, b, c] of WIN_LINES) {
     if (board[a] && board[a] === board[b] && board[a] === board[c]) {
       return board[a] as Player;
     }
   }
   if (!board.includes(null)) return 'Draw';
+  return null;
+}
+
+/** Returns the three board indices that form the winning line, or null if there is no winner yet. */
+export function getWinningLine(board: Board): number[] | null {
+  for (const line of WIN_LINES) {
+    const [a, b, c] = line;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return [...line];
+    }
+  }
   return null;
 }
 
@@ -96,6 +108,14 @@ function backpropagate(node: Node, result: number) {
   }
 }
 
+/**
+ * Runs Monte Carlo Tree Search to find the best move for the given player.
+ * Returns the board index of the best move, or -1 if no moves are available.
+ *
+ * @param board - Current board state
+ * @param aiPlayer - The player the AI is controlling ('X' or 'O')
+ * @param iterations - Number of MCTS simulations to run (higher = stronger play)
+ */
 export function getBestMoveMCTS(board: Board, aiPlayer: 'X' | 'O' = 'O', iterations: number = 3000): number {
   const availableMoves = getAvailableMoves(board);
   if (availableMoves.length === 0) return -1;

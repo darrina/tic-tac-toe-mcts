@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bot, User, RotateCcw, Sparkles, Play, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Board, Player, checkWinner, getBestMoveMCTS } from "@/lib/mcts";
+import { Board, Player, checkWinner, getWinningLine, getBestMoveMCTS } from "@/lib/mcts";
 
 export default function Game() {
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
@@ -17,29 +17,13 @@ export default function Game() {
   const aiMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const checkWinState = useCallback((currentBoard: Board) => {
-    const lines = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8],
-      [0, 3, 6], [1, 4, 7], [2, 5, 8],
-      [0, 4, 8], [2, 4, 6]
-    ];
-    
-    for (let i = 0; i < lines.length; i++) {
-      const [a, b, c] = lines[i];
-      if (currentBoard[a] && currentBoard[a] === currentBoard[b] && currentBoard[a] === currentBoard[c]) {
-        setWinner(currentBoard[a] as Player);
-        setWinningLine(lines[i]);
-        setGameState('paused');
-        return currentBoard[a] as Player;
-      }
-    }
-    
-    if (!currentBoard.includes(null)) {
-      setWinner('Draw');
+    const result = checkWinner(currentBoard);
+    if (result !== null) {
+      setWinner(result);
+      setWinningLine(getWinningLine(currentBoard));
       setGameState('paused');
-      return 'Draw';
     }
-    
-    return null;
+    return result;
   }, []);
 
   const handleMove = useCallback((index: number, player: 'X' | 'O') => {
@@ -89,6 +73,7 @@ export default function Game() {
     return () => {
       if (aiMoveTimeoutRef.current) {
         clearTimeout(aiMoveTimeoutRef.current);
+        aiMoveTimeoutRef.current = null;
       }
     };
   }, [currentPlayer, playerXType, playerOType, board, winner, difficulty, handleMove, gameState]);

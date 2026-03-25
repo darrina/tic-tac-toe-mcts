@@ -1,16 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   checkWinner,
   getWinningLine,
   getBestMoveMCTS,
   type Board,
   type Player,
-} from "@/lib/mcts";
+} from "../lib/mcts";
 
 // Helper: build a Board from a compact string ("X O X..." where spaces separate cells, _ = null)
 function makeBoard(cells: (Player)[]): Board {
   return cells;
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("checkWinner", () => {
   it("returns null for an empty board", () => {
@@ -122,44 +126,61 @@ describe("getWinningLine", () => {
 });
 
 describe("getBestMoveMCTS", () => {
-  it("returns -1 when no moves are available (full board)", () => {
-    const board = makeBoard(["X", "O", "X", "O", "X", "O", "O", "X", "O"]);
-    expect(getBestMoveMCTS(board, "O")).toBe(-1);
-  });
-
-  it("returns the only available move on a near-full board", () => {
-    const board = makeBoard(["X", "O", "X", "O", "X", "O", "O", "X", null]);
-    expect(getBestMoveMCTS(board, "O")).toBe(8);
-  });
-
-  it("takes the winning move when one is available (O wins with move 8)", () => {
-    // O has [2, 5], next move at 8 gives column win [2,5,8]
-    const board = makeBoard(["X", "X", "O", "X", null, "O", null, null, null]);
-    const move = getBestMoveMCTS(board, "O", 500);
-    expect(move).toBe(8);
-  });
-
-  it("blocks opponent from winning (X would win at 2, O must block)", () => {
-    // X has [0,1], O must play 2 to block
-    const board = makeBoard(["X", "X", null, "O", "O", null, null, null, null]);
-    // O should either win at 5 or block at 2. Let's check O plays 5 (winning move) or 2
-    const move = getBestMoveMCTS(board, "O", 500);
-    // O has [3,4], so O wins at 5
-    expect(move).toBe(5);
-  });
-
-  it("returns a valid board index for an empty board", () => {
-    const board = makeBoard(Array(9).fill(null));
-    const move = getBestMoveMCTS(board, "X", 200);
-    expect(move).toBeGreaterThanOrEqual(0);
-    expect(move).toBeLessThanOrEqual(8);
-  });
-
-  it("returns a valid move index for a mid-game board", () => {
+  it("posts board payload and returns the server move", async () => {
     const board = makeBoard(["X", null, null, null, "O", null, null, null, null]);
-    const move = getBestMoveMCTS(board, "X", 300);
-    expect(move).toBeGreaterThanOrEqual(0);
-    expect(move).toBeLessThanOrEqual(8);
-    expect(board[move]).toBeNull();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ move: 4 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const move = await getBestMoveMCTS(board, "X", 1234);
+
+    expect(move).toBe(4);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/mcts/next-move",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+      }),
+    );
+
+    const payload = JSON.parse(
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+    ) as { board: Board; aiPlayer: "X" | "O"; iterations: number };
+    expect(payload.board).toEqual(board);
+    expect(payload.aiPlayer).toBe("X");
+    expect(payload.iterations).toBe(1234);
+
+  });
+
+  it("throws when the API returns a non-ok response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("Bad Request", { status: 400, statusText: "Bad Request" }),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await expect(getBestMoveMCTS(makeBoard(Array(9).fill(null)), "O")).rejects.toThrow(
+      "400: Bad Request",
+    );
+
+  });
+
+  it("throws when the API response shape is invalid", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ bestMove: 2 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await expect(getBestMoveMCTS(makeBoard(Array(9).fill(null)), "O")).rejects.toThrow(
+      "Invalid response from /api/mcts/next-move",
+    );
+
   });
 });

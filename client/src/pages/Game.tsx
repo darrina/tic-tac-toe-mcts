@@ -50,6 +50,8 @@ export default function Game() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     // Clear any existing timeout
     if (aiMoveTimeoutRef.current) {
       clearTimeout(aiMoveTimeoutRef.current);
@@ -63,14 +65,21 @@ export default function Game() {
 
     if (isAITurn) {
       aiMoveTimeoutRef.current = setTimeout(() => {
-        const bestMove = getBestMoveMCTS(board, currentPlayer, difficulty);
-        if (bestMove !== -1) {
-          handleMove(bestMove, currentPlayer);
-        }
+        void (async () => {
+          try {
+            const bestMove = await getBestMoveMCTS(board, currentPlayer, difficulty);
+            if (!cancelled && bestMove !== -1) {
+              handleMove(bestMove, currentPlayer);
+            }
+          } catch {
+            // Keep the current state untouched on network or parse errors.
+          }
+        })();
       }, 600); // Delay for visualization
     }
 
     return () => {
+      cancelled = true;
       if (aiMoveTimeoutRef.current) {
         clearTimeout(aiMoveTimeoutRef.current);
         aiMoveTimeoutRef.current = null;

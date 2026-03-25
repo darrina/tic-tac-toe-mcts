@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import Game from "@/pages/Game";
 
 // Mock framer-motion so animations don't interfere with tests
@@ -20,7 +20,7 @@ vi.mock("@/lib/mcts", async () => {
   const actual = await vi.importActual<typeof import("@/lib/mcts")>("@/lib/mcts");
   return {
     ...actual,
-    getBestMoveMCTS: vi.fn(() => -1), // default: no move
+    getBestMoveMCTS: vi.fn(async () => -1), // default: no move
   };
 });
 
@@ -143,7 +143,7 @@ describe("Game component – start / pause", () => {
 describe("Game component – human moves", () => {
   beforeEach(() => {
     // Ensure AI returns -1 (no move) so only human moves matter
-    vi.mocked(getBestMoveMCTS).mockReturnValue(-1);
+    vi.mocked(getBestMoveMCTS).mockResolvedValue(-1);
   });
 
   function startHumanVsHuman() {
@@ -320,7 +320,7 @@ describe("Game component – AI move execution", () => {
   });
 
   it("triggers AI move after delay when it is AI's turn", async () => {
-    vi.mocked(getBestMoveMCTS).mockReturnValue(4);
+    vi.mocked(getBestMoveMCTS).mockResolvedValue(4);
 
     render(<Game />);
     // X=human, O=ai (default)
@@ -329,14 +329,14 @@ describe("Game component – AI move execution", () => {
 
     // AI move should be scheduled after 600ms
     await act(async () => {
-      vi.advanceTimersByTime(700);
+      await vi.advanceTimersByTimeAsync(700);
     });
 
     expect(getCell(4)).toHaveTextContent("O");
   });
 
   it("does not trigger AI move when game is paused", async () => {
-    vi.mocked(getBestMoveMCTS).mockReturnValue(4);
+    vi.mocked(getBestMoveMCTS).mockResolvedValue(4);
 
     render(<Game />);
     // Don't start – game is paused
@@ -352,7 +352,7 @@ describe("Game component – AI move execution", () => {
   });
 
   it("clears pending AI timeout when reset is clicked", async () => {
-    vi.mocked(getBestMoveMCTS).mockReturnValue(4);
+    vi.mocked(getBestMoveMCTS).mockResolvedValue(4);
 
     render(<Game />);
     // X=human, O=ai (default)
@@ -381,9 +381,9 @@ describe("Game component – AI move execution", () => {
 
   it("AI vs AI: both players make moves after start", async () => {
     vi.mocked(getBestMoveMCTS)
-      .mockReturnValueOnce(0) // X's first move
-      .mockReturnValueOnce(1) // O's first move
-      .mockReturnValue(-1);  // stop further moves
+      .mockResolvedValueOnce(0) // X's first move
+      .mockResolvedValueOnce(1) // O's first move
+      .mockResolvedValue(-1);  // stop further moves
 
     render(<Game />);
     // Set both to AI
@@ -392,14 +392,13 @@ describe("Game component – AI move execution", () => {
     clickStart();
 
     await act(async () => {
-      vi.advanceTimersByTime(700); // X moves
+      await vi.advanceTimersByTimeAsync(700); // X moves
     });
+    expect(getCell(0)).toHaveTextContent("X");
 
     await act(async () => {
-      vi.advanceTimersByTime(700); // O moves
+      await vi.advanceTimersByTimeAsync(700); // O moves
     });
-
-    expect(getCell(0)).toHaveTextContent("X");
     expect(getCell(1)).toHaveTextContent("O");
   });
 });
